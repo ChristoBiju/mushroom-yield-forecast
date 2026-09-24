@@ -15,7 +15,7 @@ Before running any scripts, ensure your virtual environment is active.
 .\venv\Scripts\Activate.ps1
 ```
 
-## 2. Folder Map
+### 2. Folder Map
 
 ```text
 mushroom-yield-forecast/
