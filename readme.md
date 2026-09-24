@@ -13,8 +13,9 @@ Before running any scripts, ensure your virtual environment is active.
 **Windows (PowerShell):**
 ```powershell
 .\venv\Scripts\Activate.ps1
+```
 
-###2. Folder Map
+## 2. Folder Map
 
 ```text
 mushroom-yield-forecast/
@@ -27,3 +28,4 @@ mushroom-yield-forecast/
 ├── .gitignore        # Files ignored by Git (e.g., venv/)
 ├── README.md         # Project overview and instructions
 └── requirements.txt  # Project dependencies
+```
