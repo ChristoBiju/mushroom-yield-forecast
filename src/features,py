@@ -1,0 +1,101 @@
+"""
+src/features.py
+Day 7: Feature Engineering & Min-Max Scaling for Polyhouse Sensor Data.
+
+Feature Engineering Formulas:
+- temp_humidity_interaction: temperature_c * humidity_pct 
+  (Captures combined heat-moisture stress or environment intensity)
+- humidity_sq: humidity_pct ** 2
+  (Captures non-linear curvature/sweet-spot response for mushroom fruiting)
+- temp_rolling_mean_3h: 3-period rolling average of temperature_c 
+  (Provides short-term thermal temporal context)
+
+Artifacts:
+- Fitted MinMaxScaler saved to models/minmax_scaler.joblib for inference consistency.
+- Processed features exported to data/processed/03_features.parquet.
+"""
+
+from pathlib import Path
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+import joblib
+
+# Define file paths
+INPUT_PATH = Path("data/interim/02_cleaned.parquet")
+OUTPUT_PATH = Path("data/processed/03_features.parquet")
+SCALER_OUTPUT_PATH = Path("models/minmax_scaler.joblib")
+
+
+def engineer_and_scale_features():
+    # 1. Load cleaned interim data
+    if not INPUT_PATH.exists():
+        input_file = Path("data/interim/02_cleaned.csv")
+        df = pd.read_csv(input_file, parse_dates=["timestamp"])
+    else:
+        df = pd.read_parquet(INPUT_PATH)
+
+    print(f"Loaded {len(df)} rows from interim layer.\n" + "=" * 50)
+
+    # Enforce chronological sort for rolling calculations
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    target_col = "harvested_yield_kg" if "harvested_yield_kg" in df.columns else "yield_kg"
+
+    # 2. Feature Engineering with explicit formulas
+    df["temp_humidity_interaction"] = df["temperature_c"] * df["humidity_pct"]
+    df["humidity_sq"] = df["humidity_pct"] ** 2
+    df["temp_rolling_mean_3h"] = df["temperature_c"].rolling(window=3, min_periods=1).mean()
+
+    print("Engineered features created successfully.")
+
+    # 3. Define feature columns to scale
+    feature_cols = [
+        "temperature_c",
+        "humidity_pct",
+        "co2_ppm",
+        "temp_humidity_interaction",
+        "humidity_sq",
+        "temp_rolling_mean_3h"
+    ]
+
+    # Verify no NaNs exist prior to scaling
+    if df[feature_cols].isna().sum().sum() > 0:
+        raise ValueError("NaN values detected in feature columns prior to scaling!")
+
+    # 4. Fit MinMaxScaler and save artifact under models/
+    scaler = MinMaxScaler()
+    scaled_features = scaler.fit_transform(df[feature_cols])
+
+    # Ensure models directory exists and save the fitted scaler
+    SCALER_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(scaler, SCALER_OUTPUT_PATH)
+    print(f"Fitted MinMaxScaler saved to: {SCALER_OUTPUT_PATH}")
+
+    # 5. Build final processed dataframe (Target `y` is left unscaled)
+    scaled_df = pd.DataFrame(
+        scaled_features,
+        columns=[f"{col}_scaled" for col in feature_cols]
+    ).round(6)
+
+    final_df = pd.concat([df[["timestamp", target_col]], scaled_df], axis=1)
+
+    # Validate shapes and boundary ranges [0, 1]
+    assert len(final_df) == len(df), "Shape mismatch between raw input and processed output!"
+    for col in scaled_df.columns:
+        assert final_df[col].min() >= 0.0 and final_df[col].max() <= 1.0, f"Scale validation failed for {col}!"
+
+    # 6. Save processed dataset layer
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        final_df.to_parquet(OUTPUT_PATH, index=False)
+        print(f"Successfully saved processed features to: {OUTPUT_PATH}")
+    except Exception:
+        fallback_csv = OUTPUT_PATH.with_suffix(".csv")
+        final_df.to_csv(fallback_csv, index=False)
+        print(f"Parquet engine unavailable. Saved fallback to: {fallback_csv}")
+
+    print("=" * 50 + "\nDay 7 Feature Engineering & Scaling Complete!")
+
+
+if __name__ == "__main__":
+    engineer_and_scale_features()
